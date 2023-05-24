@@ -32,6 +32,7 @@ use C4::Auth;
 use C4::Context;
 use File::Spec;
 use JSON qw( encode_json );
+use URI::Escape;
 
 BEGIN {
     my $kohaversion = Koha::version;
@@ -45,7 +46,7 @@ BEGIN {
 }
 
 our $dbh      = C4::Context->dbh();
-our $VERSION  = 1.8;
+our $VERSION  = 1.9;
 our $metadata = {
     name            => 'PDFtoCover',
     author          => 'Mehdi Hamidi, Bouzid Fergani, Arthur Bousquet, The Minh Luong',
@@ -61,7 +62,7 @@ sub new {
     $args->{'metadata'} = $metadata;
     $args->{'metadata'}->{'class'} = $class;
     my $self = $class->SUPER::new($args);
-
+    $self->{cgi} = CGI->new();
     return $self;
 }
 
@@ -72,6 +73,7 @@ sub tool {
 
     my $lock_path = File::Spec->catdir( File::Spec->rootdir(), "tmp", ".Koha.PDFtoCover.lock" );
     my $lock = (-e $lock_path) ? 1 : 0;
+
 
     my $poppler = "/usr/bin/pdftocairo";
     unless (-e $poppler){
@@ -135,82 +137,165 @@ sub getKohaVersion {
 
 sub displayAffected {
     my ( $self, $args ) = @_;
-    my $pdf = 0;
-    my $kohaversion = getKohaVersion();
-    my $query = "";
-    if($kohaversion < 21.0508000){
-      $query = "SELECT count(*) as count FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from biblioimages);";
-    }else{
-      $query = "SELECT count(*) as count FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from cover_images);";
-    }
+    my $table = getKohaVersion() < 21.0508000 ? "biblioimages" : "cover_images";
+    my $query = "SELECT count(*) as count FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from $table);";
     my $stmt = $dbh->prepare($query);
     $stmt->execute();
 
     if ( my $row = $stmt->fetchrow_hashref() ) {
-        $pdf = $row->{count};
+        return $row->{count};
     }
-
-    return $pdf;
+    return 0;
 }
 
 sub genererVignette {
+    # methode appelée si on génère les vignettes pour toutes les notices
     my ( $self, $args ) = @_;
-    my $dbh = C4::Context->dbh;
     my $ua = LWP::UserAgent->new( timeout => "5" );
-    my $kohaversion = getKohaVersion();
-    my $query = "";
-    if($kohaversion < 21.0508000){
-      $query = "SELECT a.biblionumber, EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from biblioimages);";
-    }else{
-      $query = "SELECT a.biblionumber, EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from cover_images);";
-    }
+    my $table = getKohaVersion() < 21.0508000 ? "biblioimages" : "cover_images";
+    my $query = "SELECT a.biblionumber, EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from $table);";
+
     # Retourne 856$u, qui est le(s) URI(s) d'une ressource numérique
     my $sthSelectPdfUri = $dbh->prepare($query);
     $sthSelectPdfUri->execute();
-
     while ( my ( $biblionumber, $urifield ) = $sthSelectPdfUri->fetchrow_array() ) {
         my @uris = split / /, $urifield;
-        foreach my $url (@uris) {
-            my $response = $ua->get($url);
-            if ( $response->is_success && $response->header('content-type') =~ /application\/pdf/ ) {
-                my $lastmodified = $response->header('last-modified');
-
-                # On vérifie que le fichier à l'URL spécifié est bel et bien un pdf
-                my @filestodelete = ();
-                my $save          = C4::Context->temporary_directory();
-                $save =~ s/\/*$/\//;
-                $save .= $biblionumber;
-                if ( is_success( getstore( $url, $save ) ) ) {
-                    push @filestodelete, $save;
-                    `pdftocairo "$save" -png "$save" -singlefile 2>&1`;    # Conversion de pdf à png, seulement pour la première page
-                    my $imageFile = $save . ".png";
-                    push @filestodelete, $imageFile;
-
-                    my $srcimage = GD::Image->new($imageFile);
-                    my $replace  = 1;
-                    if($kohaversion < 21.0508000){
-                        C4::Images::PutImage( $biblionumber, $srcimage, $replace );
-                    }else{
-                        my $input = CGI->new;
-                        my $itemnumber = $input->param('itemnumber');
-                        Koha::CoverImage->new(
-                            {
-                              biblionumber => $biblionumber,
-                              itemnumber   => $itemnumber,
-                              src_image    => $srcimage
-                            }
-                        )->store;
-                    }
-                    foreach my $file (@filestodelete) {
-                        unlink $file or warn "Could not unlink $file: $!\nNo more images to import.Exiting.";
-                    }
-                    last;
-                }
-            }
-        }
-
+        $self->genererVignetteParUris($biblionumber, @uris);
         $self->store_data({ to_process => $self->retrieve_data('to_process') - 1 });
     }
+    return 0;
+}
+
+sub genererUneVignette {
+    # methode appelée si on génère la vignette pour une notice spécifique
+    my ( $self, $params) = @_;
+    my $biblionumber = $self->{cgi}->param('biblionumber');
+    if ($self->{cgi}->param('regenerer')) { # On supprime l'image si elle a été générée par le passé
+        my $query = "DELETE FROM cover_images WHERE biblionumber = ?";
+        my $stmt = $dbh->prepare($query);
+        $stmt->execute($biblionumber)
+    }
+    my @uris = $self->getUrisByBiblioNumber($biblionumber);
+    $self->genererVignetteParUris($biblionumber, @uris);
+    print $self->{cgi}->redirect(-url => '/cgi-bin/koha/catalogue/detail.pl?biblionumber=' . $biblionumber);
+    exit 0;
+}
+
+sub genererVignetteParUris {
+    my ( $self, $biblionumber, @uris) = @_;
+    foreach my $url (@uris) {
+        if ( $self->isPdfResource($url) ) {
+            my @filestodelete = ();
+            my $save          = C4::Context->temporary_directory();
+            $save =~ s/\/*$/\//;
+            $save .= $biblionumber;
+            if ( is_success( getstore( $url, $save ) ) ) {
+                push @filestodelete, $save;
+                `pdftocairo "$save" -png "$save" -singlefile 2>&1`;    # Conversion de pdf à png, seulement pour la première page
+                my $imageFile = $save . ".png";
+                push @filestodelete, $imageFile;
+
+                my $srcimage = GD::Image->new($imageFile);
+                my $replace  = 1;
+                if(getKohaVersion() < 21.0508000){
+                    C4::Images::PutImage( $biblionumber, $srcimage, $replace );
+                }else{
+                    my $input = CGI->new;
+                    my $itemnumber = $input->param('itemnumber');
+                    Koha::CoverImage->new(
+                        {
+                            biblionumber => $biblionumber,
+                            itemnumber   => $itemnumber,
+                            src_image    => $srcimage
+                        }
+                    )->store;
+                }
+                foreach my $file (@filestodelete) {
+                    unlink $file or warn "Could not unlink $file: $!\nNo more images to import.Exiting.";
+                }
+            }
+            last;
+        }
+    }
+    return 0;
+}
+
+sub getUrisByBiblioNumber {
+    # recupere toutes les uris correspondantes a une notice
+    my ( $self, $biblionumber ) = @_;
+
+    my $query = "SELECT EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber = ? ;";
+
+    # Retourne 856$u, qui est le(s) URI(s) d'une ressource numérique
+    my $stmt = $dbh->prepare($query);
+    $stmt->execute($biblionumber);
+    my $urifield = $stmt->fetchrow_array();
+
+    my @uris = split / /, $urifield;
+    return @uris;
+}
+
+sub isPdfResource {
+    # vérifie si la ressource est un pdf
+    my ( $self, $url ) = @_;
+    my $ua = LWP::UserAgent->new( timeout => "5" );
+    my $response = $ua->get($url);
+    if ( $response->is_success ) { 
+        if ($response->header('content-type') =~ /application\/pdf/) {
+            return 1;
+        } elsif ($response->header('content-disposition') && substr($response->header('content-disposition'), -5, 4) eq ".pdf") {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+sub hasPdfResource {
+    # verifie si la notice a une ressource pdf
+    my ( $self, $biblionumber ) = @_;
+    my @uris = $self->getUrisByBiblioNumber($biblionumber);
+    foreach my $url (@uris) { 
+        return $self->isPdfResource($url);
+    }
+    return 0;
+}
+
+sub hasAlreadyLocalImage {
+    my ( $self, $biblionumber ) = @_;
+    my $table = getKohaVersion() < 21.0508000 ? "biblioimages" : "cover_images";
+    my $query = "select count(*) as count from $table where biblionumber = ? ;";
+
+    my $stmt = $dbh->prepare($query);
+    $stmt->execute($biblionumber);
+
+    my $row = $stmt->fetchrow_hashref();
+    return $row->{count} > 0;
+}
+
+sub intranet_catalog_biblio_enhancements_toolbar_button { # hook koha
+    # Ajoute un bouton a la barre d'outils de la page detail.pl pour generer la vignette
+    my ( $self, $params ) = @_;
+    my $cgi = $self->{cgi};
+    my $biblionumber = $cgi->param('biblionumber');
+    if ($self->hasPdfResource($biblionumber)) { # On affiche le bouton que s'il y a une ressource pdf
+        my $lang = $cgi->cookie('KohaOpacLanguage');
+        
+        my $link = "/cgi-bin/koha/plugins/run.pl?class=" . uri_escape("Koha::Plugin::" . $metadata->{name}) . "&method=genererUneVignette&biblionumber=" . $biblionumber;
+        my $textbutton = '';
+
+        if ($self->hasAlreadyLocalImage($biblionumber)) {
+            $link .= "&regenerer=1";
+            $textbutton = "<i class='fa fa-refresh'></i>&nbsp;";
+            $textbutton .= $lang eq "fr-CA" || $lang eq "fr" ? "Reg&eacute;n&eacute;rer la vignette" : "Regenerate Thumbnail";
+        } else {
+            $textbutton = "<i class='fa fa-picture-o'></i>&nbsp;";
+            $textbutton .= $lang eq "fr-CA" || $lang eq "fr" ? "G&eacute;n&eacute;rer la vignette" : "Generate Thumbnail";
+        }
+        return "<div class='btn-group'>
+            <a id='cover-$biblionumber' class='btn btn-default' href='$link'>$textbutton</a></div>";
+    }
+
+    return "";
 }
 
 sub progress {

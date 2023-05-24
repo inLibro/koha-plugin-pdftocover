@@ -20,7 +20,7 @@
         <label class="filterDescription"><p>Number of records to process: <span id="to_process">[% pdf %]</span></p></label>
         <hr>
 
-        <form onbsubmit="launchGenerate()" method="get" id="formTraitement">
+        <form onsubmit="launchGenerate()" method="get" id="formTraitement">
             <!-- Necessary for the plugin to run, do not remove  -->
             <input type="hidden" name="class" value="[% CLASS %]"/>
             <input type="hidden" name="method" value="[% METHOD %]"/>
@@ -42,6 +42,10 @@
 [% INCLUDE 'intranet-bottom.inc' %]
 
 <style>
+#doc3 {
+    margin-left: 20px;
+}
+
 #submit{
     font-size: 100%;
     font-weight: bold;
