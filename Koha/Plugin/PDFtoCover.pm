@@ -277,24 +277,38 @@ sub intranet_catalog_biblio_enhancements_toolbar_button { # hook koha
     my ( $self, $params ) = @_;
     my $cgi = $self->{cgi};
     my $biblionumber = $cgi->param('biblionumber');
-    if ($self->hasPdfResource($biblionumber)) { # On affiche le bouton que s'il y a une ressource pdf
+
+    # On affiche un bouton que s'il y a une ressource pdf 
+    if ($self->hasPdfResource($biblionumber)) { 
         my $lang = $cgi->cookie('KohaOpacLanguage');
-        
-        my $link = "/cgi-bin/koha/plugins/run.pl?class=" . uri_escape("Koha::Plugin::" . $metadata->{name}) . "&method=genererUneVignette&biblionumber=" . $biblionumber;
-        my $textbutton = '';
+        my $hasLocalImage = $self->hasAlreadyLocalImage($biblionumber);
+        my $stmt = $dbh->prepare("select value from systempreferences where variable='LocalCoverImages'");
+        $stmt->execute();
 
-        if ($self->hasAlreadyLocalImage($biblionumber)) {
-            $link .= "&regenerer=1";
-            $textbutton = "<i class='fa fa-refresh'></i>&nbsp;";
-            $textbutton .= $lang eq "fr-CA" || $lang eq "fr" ? "Reg&eacute;n&eacute;rer la vignette" : "Regenerate Thumbnail";
-        } else {
-            $textbutton = "<i class='fa fa-picture-o'></i>&nbsp;";
-            $textbutton .= $lang eq "fr-CA" || $lang eq "fr" ? "G&eacute;n&eacute;rer la vignette" : "Generate Thumbnail";
+        my $button = "<div class='btn-group'>";
+        my $textbutton = $lang eq "fr-CA" || $lang eq "fr" ? "G&eacute;n&eacute;rer l'image de couverture" : "Generate cover image";
+        if ($hasLocalImage) {
+            $textbutton = "Reg" . substr($textbutton, 1);
         }
-        return "<div class='btn-group'>
-            <a id='cover-$biblionumber' class='btn btn-default' href='$link'>$textbutton</a></div>";
-    }
 
+
+        if ($stmt->fetchrow_array()) {
+            my $link = "/cgi-bin/koha/plugins/run.pl?class=" . uri_escape("Koha::Plugin::" . $metadata->{name}) . 
+                "&method=genererUneVignette&biblionumber=" . $biblionumber . ($hasLocalImage ? "&regenerer=1" : "");
+
+            my $class = "<i class='fa fa-" . ($hasLocalImage ? "refresh" : "picture-o") . "'></i>&nbsp;";
+
+            $button .= "<a id='cover-$biblionumber' class='btn btn-default' href='$link'>$class $textbutton</a>";
+        } else {
+            my $title = "You must activate the LocalCoverImages system preference to generate the cover image"; 
+            if ($lang eq "fr-CA" || $lang eq "fr") {
+                $title = "Vous devez activer la pr&eacute;f&eacute;rence syst&ecirc;me LocalCoverImages pour g&eacute;n&eacute;rer l'image de couverture";
+            }
+
+            $button .= "<button type='button' class='btn btn-default' title=\"$title\" disabled><i class='fa fa-exclamation-triangle'></i>&nbsp;$textbutton</button>";
+        }
+        return $button . "</div>";
+    }
     return "";
 }
 
