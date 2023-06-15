@@ -52,7 +52,7 @@ our $metadata = {
     author          => 'Mehdi Hamidi, Bouzid Fergani, Arthur Bousquet, The Minh Luong',
     description     => 'Creates cover images for documents missing one',
     date_authored   => '2016-06-08',
-    date_updated    => '2022-11-18',
+    date_updated    => '2023-06-15',
     minimum_version => '17.05',
     version         => $VERSION,
 };
@@ -302,7 +302,7 @@ sub intranet_catalog_biblio_enhancements_toolbar_button { # hook koha
         } else {
             my $title = "You must activate the LocalCoverImages system preference to generate the cover image"; 
             if ($lang eq "fr-CA" || $lang eq "fr") {
-                $title = "Vous devez activer la pr&eacute;f&eacute;rence syst&ecirc;me LocalCoverImages pour g&eacute;n&eacute;rer l'image de couverture";
+                $title = "Vous devez activer la pr&eacute;f&eacute;rence syst&egrave;me LocalCoverImages pour g&eacute;n&eacute;rer l'image de couverture";
             }
 
             $button .= "<button type='button' class='btn btn-default' title=\"$title\" disabled><i class='fa fa-exclamation-triangle'></i>&nbsp;$textbutton</button>";
