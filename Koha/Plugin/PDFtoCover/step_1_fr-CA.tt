@@ -42,6 +42,10 @@
 [% INCLUDE 'intranet-bottom.inc' %]
 
 <style>
+#doc3 {
+    margin-left: 20px;
+}
+
 #submit{
     font-size: 100%;
     font-weight: bold;
