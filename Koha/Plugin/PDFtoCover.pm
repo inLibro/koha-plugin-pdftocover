@@ -195,23 +195,27 @@ sub genererVignetteParUris {
                 my $imageFile = $save . ".png";
                 push @filestodelete, $imageFile;
 
-                my $srcimage = GD::Image->new($imageFile);
-                my $replace  = 1;
-                if(getKohaVersion() < 21.0508000){
-                    C4::Images::PutImage( $biblionumber, $srcimage, $replace );
-                }else{
-                    my $input = CGI->new;
-                    my $itemnumber = $input->param('itemnumber');
-                    Koha::CoverImage->new(
-                        {
-                            biblionumber => $biblionumber,
-                            itemnumber   => $itemnumber,
-                            src_image    => $srcimage
-                        }
-                    )->store;
-                }
-                foreach my $file (@filestodelete) {
-                    unlink $file or warn "Could not unlink $file: $!\nNo more images to import.Exiting.";
+                if ( -e $imageFile ) {
+                    my $srcimage = GD::Image->new($imageFile);
+                    my $replace  = 1;
+                    if (getKohaVersion() < 21.0508000){
+                        C4::Images::PutImage( $biblionumber, $srcimage, $replace );
+                    } else {
+                        my $input = CGI->new;
+                        my $itemnumber = $input->param('itemnumber');
+                        Koha::CoverImage->new(
+                            {
+                                biblionumber => $biblionumber,
+                                itemnumber   => $itemnumber,
+                                src_image    => $srcimage
+                            }
+                        )->store;
+                    }
+                    foreach my $file (@filestodelete) {
+                        unlink $file or warn "Could not unlink $file: $!\nNo more images to import.Exiting.";
+                    }  
+                } else {
+                    warn "No image generate for biblionumber : $biblionumber with url : $url. Invalid url\n";
                 }
             }
             last;
