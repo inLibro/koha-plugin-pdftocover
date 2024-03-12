@@ -68,41 +68,29 @@ sub new {
 
 sub tool {
     my ( $self, $args ) = @_;
+
     my $cgi = $self->{'cgi'};
-    my $op  = $cgi->param('op');
 
-    my $lock_path = File::Spec->catdir( File::Spec->rootdir(), "tmp", ".Koha.PDFtoCover.lock" );
-    my $lock = (-e $lock_path) ? 1 : 0;
+    if ( $cgi->param('greet') ) {
+        my $lock_path = File::Spec->catdir( File::Spec->rootdir(), "tmp", ".Koha.PDFtoCover.lock" );
+        my $lock = (-e $lock_path) ? 1 : 0;
 
+        my $poppler = "/usr/bin/pdftocairo";
+        unless (-e $poppler){
+            $self->missingModule();
+        }
+        else {
+            my $pdf = $self->displayAffected();
+            $self->store_data({ to_process => $pdf });
 
-    my $poppler = "/usr/bin/pdftocairo";
-    unless (-e $poppler){
-        $self->missingModule();
-    }
-    elsif ( $op && $op eq 'valide' ) {
-        my $pdf = $self->displayAffected();
-        $self->store_data({ to_process => $pdf });
+            open my $fh, ">", $lock_path;
+            close $fh;
+            $self->schedule_greets();
+            unlink($lock_path);
 
-        my $pid = fork();
-        if ($pid) {
-            my $template = $self->retrieve_template('step_1');
-            $template->param( pdf  => $pdf );
-            $template->param( wait => 1 );
-            $template->param( done => 0 );
-            print $cgi->header( -type => 'text/html', -charset => 'utf-8' );
-            print $template->output();
+            #$self->genererVignette();
             exit 0;
         }
-
-        open my $fh, ">", $lock_path;
-        close $fh;
-        $self->genererVignette();
-        unlink($lock_path);
-
-        exit 0;
-    }
-    else {
-        $self->step_1($lock);
     }
 }
 
@@ -117,6 +105,20 @@ sub step_1 {
     $template->param( done => $cgi->param('done') || 0 );
     print $cgi->header( -type => 'text/html', -charset => 'utf-8' );
     print $template->output();
+}
+
+sub schedule_greets {
+    my ($self) = @_;
+
+    my $cgi   = $self->{cgi};
+    my $count = $self->displayAffected();
+
+    Koha::Plugin::PDFtoCover::PDFtoCoverGreeter->new->enqueue( { size => $count } );
+
+    my $template = $self->get_template( { file => 'greets_scheduled.tt' } );
+    $template->param( count => $count );
+
+    $self->output_html( $template->output() );
 }
 
 sub missingModule {

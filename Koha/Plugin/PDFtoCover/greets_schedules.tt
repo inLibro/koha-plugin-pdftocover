@@ -1,0 +1,42 @@
+[% INCLUDE 'doc-head-open.inc' %]
+<!-- Head-->
+<title>Koha &rsaquo; Plugins &rsaquo; PDFtoCover</title>
+[% INCLUDE 'doc-head-close.inc' %]
+<!-- Body-->
+[% INCLUDE 'header.inc' %]
+[% INCLUDE 'cat-search.inc' %]
+<div id="breadcrumbs"><a href="/cgi-bin/koha/mainpage.pl">Home</a> &rsaquo; <a href="/cgi-bin/koha/plugins/plugins-home.pl">Plugins</a> &rsaquo; PDFtoCover</div>
+<div id="doc3">
+    <p>Hello! You scheduled [% count | html %] greetings!</p>
+</div>
+
+<!-- Footer-->
+[% INCLUDE 'intranet-bottom.inc' %]
+
+<style>
+#doc3 {
+    margin-left: 20px;
+}
+
+#submit{
+    font-size: 100%;
+    font-weight: bold;
+    height:25px;
+    background: #AFBD22;
+    margin:3px 0;
+}
+
+#progression {
+    margin: 15px;
+    font-size : 16px;
+}
+
+.begin {
+    color : blue;
+    transition: all 0.7s ease-out;
+}
+
+.finish {
+    color : green;
+}
+</style>

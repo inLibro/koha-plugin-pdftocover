@@ -20,20 +20,15 @@
         <label class="filterDescription"><p>Number of records to process: <span id="to_process">[% pdf %]</span></p></label>
         <hr>
 
-        <form onsubmit="launchGenerate()" method="get" id="formTraitement">
+        <form method="post" id="formTraitement">
             <!-- Necessary for the plugin to run, do not remove  -->
             <input type="hidden" name="class" value="[% CLASS %]"/>
             <input type="hidden" name="method" value="[% METHOD %]"/>
             <!-- end of plugin necessary inputs  -->
-            <input type="hidden" id="op" name="op" value="valide"/>
 
-            <button id="launch" type="submit" class="btn btn-default">Create thumbnails</button>
+            <input name="greet" id="launch" type="submit" class="btn btn-default" value="Create thumbnails"/>
         </form>
 
-        <p id="progression">&nbsp;</p>
-        [% IF done == 1 %]
-            <a id="go-back" href="./plugins-home.pl">Back to plugins</a>
-        [% END %]
         <label class="filterDescription"><p>Note: The plugin downloads each file and check its header to determine if it's a PDF file or not. Only PDF files will generate thumbnails.</p></label>
     </div>
 </div>
@@ -68,44 +63,3 @@
     color : green;
 }
 </style>
-
-<script>
-$( function() {
-    [% IF wait == 1 %]
-        document.getElementById('launch').disabled = true;
-        info = document.getElementById('progression')
-        info.setAttribute('class','finish');
-        info.firstChild.data = "Job is running in the background - please wait.";
-        updateProcessed();
-    [% END %]
-    [% IF done == 1 %]
-        info = document.getElementById('progression');
-        info.setAttribute('class','finish');
-        info.firstChild.data = "Job done!";
-        document.getElementById('go-back').style.display = "inline-block";
-    [% END %]
-} );
-
-function launchGenerate() {
-    document.getElementById('launch').disabled = true;
-    info = document.getElementById('progression');
-    info.setAttribute("class","begin");
-    info.firstChild.data = "Starting job...";
-    updateProcessed();
-    info.setAttribute('class','finish');
-    info.firstChild.data = "Job was launched correctly - please wait";
-}
-
-function updateProcessed() {
-    timer = setInterval( function() {
-        $.getJSON('run.pl?class=Koha%3A%3APlugin%3A%3APDFtoCover&method=progress',
-            function(data) {
-                $('#to_process').text(data.to_process);
-                if (data.to_process == 0) {
-                    window.location.replace('run.pl?class=Koha%3A%3APlugin%3A%3APDFtoCover&method=tool&done=1');
-                }
-            }
-        );
-    }, 5000 );
-}
-</script>
