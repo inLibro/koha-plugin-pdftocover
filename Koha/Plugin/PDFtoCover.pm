@@ -33,11 +33,12 @@ use C4::Context;
 use File::Spec;
 use JSON qw( encode_json );
 use URI::Escape;
+use Koha::Plugin::PDFtoCover::PDFtoCoverGreeter;
 
 BEGIN {
     my $kohaversion = Koha::version;
     $kohaversion =~ s/(.*\..*)\.(.*)\.(.*)/$1$2$3/;
-    my $module = $kohaversion < 21.0508000 ? "C4::Images" : "Koha::CoverImages";
+    my $module = "Koha::CoverImages";
     my $file = $module;
     $file =~ s[::][/]g;
     $file .= '.pm';
@@ -55,6 +56,7 @@ our $metadata = {
     date_updated    => '2023-06-15',
     minimum_version => '17.05',
     version         => $VERSION,
+    namespace       => 'pdftocover',
 };
 
 sub new {
@@ -71,26 +73,27 @@ sub tool {
 
     my $cgi = $self->{'cgi'};
 
+    my $poppler = "/usr/bin/pdftocairo";
+    unless (-e $poppler){
+        $self->missingModule();
+    }
+
+    my $lock_path = File::Spec->catdir( File::Spec->rootdir(), "tmp", ".Koha.PDFtoCover.lock" );
+    my $lock = (-e $lock_path) ? 1 : 0;
+
     if ( $cgi->param('greet') ) {
-        my $lock_path = File::Spec->catdir( File::Spec->rootdir(), "tmp", ".Koha.PDFtoCover.lock" );
-        my $lock = (-e $lock_path) ? 1 : 0;
+        my $pdf = $self->displayAffected();
+        $self->store_data({ to_process => $pdf });
 
-        my $poppler = "/usr/bin/pdftocairo";
-        unless (-e $poppler){
-            $self->missingModule();
-        }
-        else {
-            my $pdf = $self->displayAffected();
-            $self->store_data({ to_process => $pdf });
+        open my $fh, ">", $lock_path;
+        close $fh;
+        $self->schedule_greets();
+        unlink($lock_path);
 
-            open my $fh, ">", $lock_path;
-            close $fh;
-            $self->schedule_greets();
-            unlink($lock_path);
-
-            #$self->genererVignette();
-            exit 0;
-        }
+        exit 0;
+    }
+    else {
+        $self->step_1($lock);
     }
 }
 
@@ -139,7 +142,7 @@ sub getKohaVersion {
 
 sub displayAffected {
     my ( $self, $args ) = @_;
-    my $table = getKohaVersion() < 21.0508000 ? "biblioimages" : "cover_images";
+    my $table = "cover_images";
     my $query = "SELECT count(*) as count FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from $table);";
     my $stmt = $dbh->prepare($query);
     $stmt->execute();
@@ -154,7 +157,7 @@ sub genererVignette {
     # methode appelée si on génère les vignettes pour toutes les notices
     my ( $self, $args ) = @_;
     my $ua = LWP::UserAgent->new( timeout => "5" );
-    my $table = getKohaVersion() < 21.0508000 ? "biblioimages" : "cover_images";
+    my $table = "cover_images";
     my $query = "SELECT a.biblionumber, EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from $table);";
 
     # Retourne 856$u, qui est le(s) URI(s) d'une ressource numérique
@@ -200,19 +203,17 @@ sub genererVignetteParUris {
                 if ( -e $imageFile ) {
                     my $srcimage = GD::Image->new($imageFile);
                     my $replace  = 1;
-                    if (getKohaVersion() < 21.0508000){
-                        C4::Images::PutImage( $biblionumber, $srcimage, $replace );
-                    } else {
-                        my $input = CGI->new;
-                        my $itemnumber = $input->param('itemnumber');
-                        Koha::CoverImage->new(
-                            {
-                                biblionumber => $biblionumber,
-                                itemnumber   => $itemnumber,
-                                src_image    => $srcimage
-                            }
-                        )->store;
-                    }
+              
+                    my $input = CGI->new;
+                    my $itemnumber = $input->param('itemnumber');
+                    Koha::CoverImage->new(
+                        {
+                            biblionumber => $biblionumber,
+                            itemnumber   => $itemnumber,
+                            src_image    => $srcimage
+                        }
+                    )->store;
+
                     foreach my $file (@filestodelete) {
                         unlink $file or warn "Could not unlink $file: $!\nNo more images to import.Exiting.";
                     }  
@@ -268,7 +269,7 @@ sub hasPdfResource {
 
 sub hasAlreadyLocalImage {
     my ( $self, $biblionumber ) = @_;
-    my $table = getKohaVersion() < 21.0508000 ? "biblioimages" : "cover_images";
+    my $table = "cover_images";
     my $query = "select count(*) as count from $table where biblionumber = ? ;";
 
     my $stmt = $dbh->prepare($query);
