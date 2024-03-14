@@ -22,6 +22,7 @@ package Koha::Plugin::PDFtoCover;
 # with Koha; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 use Modern::Perl;
+use Try::Tiny;
 use strict;
 use warnings;
 use CGI;
@@ -34,6 +35,7 @@ use File::Spec;
 use JSON qw( encode_json );
 use URI::Escape;
 use Koha::Plugin::PDFtoCover::PDFtoCoverGreeter;
+use Koha::BackgroundJobs;
 
 BEGIN {
     my $kohaversion = Koha::version;
@@ -78,50 +80,41 @@ sub tool {
         $self->missingModule();
     }
 
-    my $lock_path = File::Spec->catdir( File::Spec->rootdir(), "tmp", ".Koha.PDFtoCover.lock" );
-    my $lock = (-e $lock_path) ? 1 : 0;
-
     if ( $cgi->param('greet') ) {
         my $pdf = $self->displayAffected();
         $self->store_data({ to_process => $pdf });
 
-        open my $fh, ">", $lock_path;
-        close $fh;
-        $self->schedule_greets();
-        unlink($lock_path);
+        $self->{greeter} = Koha::Plugin::PDFtoCover::PDFtoCoverGreeter->new;
+        $self->{greeter}->enqueue( { size => $pdf } );
+        my $id_job = $self->{greeter}->id;
+
+        $self->step_1(1, 0, 0, $id_job);
 
         exit 0;
-    }
-    else {
-        $self->step_1($lock);
+    } elsif ( $cgi->param('stop') ) {
+        my $id_job = $cgi->param('id_job');
+        Koha::BackgroundJobs->search({ id => $id_job })->next->cancel;
+        $self->step_1(0, 0, 1, '');
+    } elsif ( $cgi->param('done') ) {
+        $self->step_1(0, 1, 0, '');
+    } else {
+        $self->step_1(0, 0, 0, '');
     }
 }
 
 sub step_1 {
-    my ( $self, $lock ) = @_;
+    my ( $self, $wait, $done, $cancel, $id_job ) = @_;
     my $cgi = $self->{'cgi'};
     my $pdf = $self->displayAffected();
 
     my $template = $self->retrieve_template('step_1');
     $template->param( pdf  => $pdf );
-    $template->param( wait => $lock );
-    $template->param( done => $cgi->param('done') || 0 );
+    $template->param( wait => $wait );
+    $template->param( done => $done );
+    $template->param( cancel => $cancel );
+    $template->param( id_job => $id_job );
     print $cgi->header( -type => 'text/html', -charset => 'utf-8' );
     print $template->output();
-}
-
-sub schedule_greets {
-    my ($self) = @_;
-
-    my $cgi   = $self->{cgi};
-    my $count = $self->displayAffected();
-
-    Koha::Plugin::PDFtoCover::PDFtoCoverGreeter->new->enqueue( { size => $count } );
-
-    my $template = $self->get_template( { file => 'greets_scheduled.tt' } );
-    $template->param( count => $count );
-
-    $self->output_html( $template->output() );
 }
 
 sub missingModule {
@@ -195,15 +188,15 @@ sub genererVignetteParUris {
             $save =~ s/\/*$/\//;
             $save .= $biblionumber;
             if ( is_success( getstore( $url, $save ) ) ) {
-                push @filestodelete, $save;
-                `pdftocairo "$save" -png "$save" -singlefile 2>&1`;    # Conversion de pdf à png, seulement pour la première page
-                my $imageFile = $save . ".png";
-                push @filestodelete, $imageFile;
+                try {
+                    push @filestodelete, $save;
+                    `pdftocairo "$save" -png "$save" -singlefile 2>&1`;    # Conversion de pdf à png, seulement pour la première page
+                    my $imageFile = $save . ".png";
+                    push @filestodelete, $imageFile;
 
-                if ( -e $imageFile ) {
                     my $srcimage = GD::Image->new($imageFile);
                     my $replace  = 1;
-              
+            
                     my $input = CGI->new;
                     my $itemnumber = $input->param('itemnumber');
                     Koha::CoverImage->new(
@@ -216,10 +209,12 @@ sub genererVignetteParUris {
 
                     foreach my $file (@filestodelete) {
                         unlink $file or warn "Could not unlink $file: $!\nNo more images to import.Exiting.";
-                    }  
-                } else {
-                    warn "No image generate for biblionumber : $biblionumber with url : $url. Invalid url\n";
-                }
+                    }
+                } catch {
+                    my $error = $_;
+                    warn "Invalid $url: $error\n";
+                    die $error;
+                };
             }
             last;
         }

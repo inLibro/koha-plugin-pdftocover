@@ -16,6 +16,7 @@ package Koha::Plugin::PDFtoCover::PDFtoCoverGreeter;
 # along with Koha; if not, see <http://www.gnu.org/licenses>.
 
 use Modern::Perl;
+use Try::Tiny;
 use C4::Context;
 use Koha::Plugin::PDFtoCover;
 
@@ -62,30 +63,41 @@ sub process {
 
     my $pdfToCover = Koha::Plugin::PDFtoCover->new();
     my $ua = LWP::UserAgent->new( timeout => "5" );
-    my $table = $pdfToCover->getKohaVersion() < 21.0508000 ? "biblioimages" : "cover_images";
-    my $query = "SELECT a.biblionumber, EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from $table);";
+    my $query = "SELECT a.biblionumber, EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from cover_images);";
 
     my $sthSelectPdfUri = $dbh->prepare($query);
     $sthSelectPdfUri->execute();
+
+    
     while ( my ( $biblionumber, $urifield ) = $sthSelectPdfUri->fetchrow_array() ) {
-        my @uris = split / /, $urifield;
-        $pdfToCover->genererVignetteParUris($biblionumber, @uris);
-        $pdfToCover->store_data({ to_process => $pdfToCover->retrieve_data('to_process') - 1 });
+        try {
+            my @uris = split / /, $urifield;
+            $pdfToCover->genererVignetteParUris($biblionumber, @uris);
+            $pdfToCover->store_data({ to_process => $pdfToCover->retrieve_data('to_process') - 1 });
 
-        push @messages,
-            {
-            type => 'success',
-            code => 'image_generated',
+            push @messages,
+                {
+                type => 'success',
+                code => 'image_' . $biblionumber . '_generated',
+                };
+
+            $report->{total_success}++;
+            
+            $self->step;
+        } catch {
+            push @messages, {
+                type => 'error',
+                code => 'image' . $biblionumber .'_generation_failed',
+                error => $_,
             };
-
-        $report->{total_success}++;
-        
-        $self->step;
+        };
     }
 
     my $data = $self->decoded_data;
     $data->{messages} = \@messages;
     $data->{report}   = $report;
+
+    $pdfToCover->store_data({ to_process => 0 });
 
     $self->finish($data);
 }
@@ -106,6 +118,18 @@ sub enqueue {
             job_queue => 'long_tasks',
         }
     );
+}
+
+=head3 cancel
+
+Cancel the job
+
+=cut
+
+sub cancel {
+    my ( $self ) = @_;
+
+    $self->SUPER::cancel;
 }
 
 1;
