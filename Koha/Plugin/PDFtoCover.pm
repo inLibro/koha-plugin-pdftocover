@@ -85,7 +85,7 @@ sub tool {
         $self->store_data({ to_process => $pdf });
 
         $self->{greeter} = Koha::Plugin::PDFtoCover::PDFtoCoverGreeter->new;
-        $self->{greeter}->enqueue( { size => $pdf } );
+        $self->{greeter}->enqueue( { size => $pdf, one_image => 0 } );
         my $id_job = $self->{greeter}->id;
 
         $self->step_1(1, 0, 0, $id_job, '');
@@ -173,8 +173,8 @@ sub genererUneVignette {
         my $stmt = $dbh->prepare($query);
         $stmt->execute($biblionumber)
     }
-    my @uris = $self->getUrisByBiblioNumber($biblionumber);
-    $self->genererVignetteParUris($biblionumber, @uris);
+    Koha::Plugin::PDFtoCover::PDFtoCoverGreeter->new->enqueue( { size => 1, biblionumber => $biblionumber, one_image => 1 } );
+    sleep(10);
     print $self->{cgi}->redirect(-url => '/cgi-bin/koha/catalogue/detail.pl?biblionumber=' . $biblionumber);
     exit 0;
 }

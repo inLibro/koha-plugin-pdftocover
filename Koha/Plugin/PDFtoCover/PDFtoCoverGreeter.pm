@@ -63,47 +63,55 @@ sub process {
     };
 
     my $pdfToCover = Koha::Plugin::PDFtoCover->new();
-    my $ua = LWP::UserAgent->new( timeout => "5" );
-    my $query = "SELECT a.biblionumber, EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from cover_images);";
+    if ( $args->{one_image}) {
+        my $biblionumber = $args->{biblionumber};
+        my @uris = $pdfToCover->getUrisByBiblioNumber($biblionumber);
+        $pdfToCover->genererVignetteParUris($biblionumber, @uris);
+        $self->step;
+        $report->{total_success}++;
+    } else {
+        my $ua = LWP::UserAgent->new( timeout => "5" );
+        my $query = "SELECT a.biblionumber, EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from cover_images);";
 
-    my $sthSelectPdfUri = $dbh->prepare($query);
-    $sthSelectPdfUri->execute();
-    
-    while ( my ( $biblionumber, $urifield ) = $sthSelectPdfUri->fetchrow_array() ) {
-        Koha::BackgroundJobs->search({ id => $self->id })->next->status eq 'cancelled' and last;
-        try {
-            my @uris = split / /, $urifield;
-            my $no_pdf = $pdfToCover->genererVignetteParUris($biblionumber, @uris);
-            $pdfToCover->store_data({ to_process => $pdfToCover->retrieve_data('to_process') - 1 });
+        my $sthSelectPdfUri = $dbh->prepare($query);
+        $sthSelectPdfUri->execute();
+        
+        while ( my ( $biblionumber, $urifield ) = $sthSelectPdfUri->fetchrow_array() ) {
+            Koha::BackgroundJobs->search({ id => $self->id })->next->status eq 'cancelled' and last;
+            try {
+                my @uris = split / /, $urifield;
+                my $no_pdf = $pdfToCover->genererVignetteParUris($biblionumber, @uris);
+                $pdfToCover->store_data({ to_process => $pdfToCover->retrieve_data('to_process') - 1 });
 
-            if ( $no_pdf ) {
-                my $error = 'No PDF url found or bad PDF url for biblionumber ' . $biblionumber;
-                warn "$error\n";
+                if ( $no_pdf ) {
+                    my $error = 'No PDF url found or bad PDF url for biblionumber ' . $biblionumber;
+                    warn "$error\n";
+                    push @messages, {
+                        type => 'error',
+                        code => 'image_generation_failed_for_bilio_' . $biblionumber,
+                        error => $error,
+                    };
+                } else {
+                    $report->{total_success}++;
+                }
+                
+                $self->step;
+            } catch {
                 push @messages, {
                     type => 'error',
                     code => 'image_generation_failed_for_bilio_' . $biblionumber,
-                    error => $error,
+                    error => $_,
                 };
-            } else {
-                $report->{total_success}++;
-            }
-            
-            $self->step;
-        } catch {
-            push @messages, {
-                type => 'error',
-                code => 'image_generation_failed_for_bilio_' . $biblionumber,
-                error => $_,
             };
-        };
-    }
+        }
 
+        my $messages_string = join("\n", map { $_->{type} . ": " . $_->{error} . "," } @messages);
+        $pdfToCover->store_data({ errors => $messages_string });
+        $pdfToCover->store_data({ to_process => 0 });
+    }
+    
     my $data = $self->decoded_data;
     $data->{report} = $report;
-
-    my $messages_string = join("\n", map { $_->{type} . ": " . $_->{error} . "," } @messages);
-    $pdfToCover->store_data({ errors => $messages_string });
-    $pdfToCover->store_data({ to_process => 0 });
 
     $self->finish($data);
 }
