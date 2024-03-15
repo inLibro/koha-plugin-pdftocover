@@ -19,6 +19,7 @@ use Modern::Perl;
 use Try::Tiny;
 use C4::Context;
 use Koha::Plugin::PDFtoCover;
+use Koha::BackgroundJobs;
 
 use base 'Koha::BackgroundJob';
 
@@ -67,36 +68,41 @@ sub process {
 
     my $sthSelectPdfUri = $dbh->prepare($query);
     $sthSelectPdfUri->execute();
-
     
     while ( my ( $biblionumber, $urifield ) = $sthSelectPdfUri->fetchrow_array() ) {
+        Koha::BackgroundJobs->search({ id => $self->id })->next->status eq 'cancelled' and last;
         try {
             my @uris = split / /, $urifield;
-            $pdfToCover->genererVignetteParUris($biblionumber, @uris);
+            my $no_pdf = $pdfToCover->genererVignetteParUris($biblionumber, @uris);
             $pdfToCover->store_data({ to_process => $pdfToCover->retrieve_data('to_process') - 1 });
 
-            push @messages,
-                {
-                type => 'success',
-                code => 'image_' . $biblionumber . '_generated',
+            if ( $no_pdf ) {
+                my $error = 'No PDF url found or bad PDF url for biblionumber ' . $biblionumber;
+                warn "$error\n";
+                push @messages, {
+                    type => 'error',
+                    code => 'image_generation_failed_for_bilio_' . $biblionumber,
+                    error => $error,
                 };
-
-            $report->{total_success}++;
+            } else {
+                $report->{total_success}++;
+            }
             
             $self->step;
         } catch {
             push @messages, {
                 type => 'error',
-                code => 'image' . $biblionumber .'_generation_failed',
+                code => 'image_generation_failed_for_bilio_' . $biblionumber,
                 error => $_,
             };
         };
     }
 
     my $data = $self->decoded_data;
-    $data->{messages} = \@messages;
-    $data->{report}   = $report;
+    $data->{report} = $report;
 
+    my $messages_string = join("\n", map { $_->{type} . ": " . $_->{error} . "," } @messages);
+    $pdfToCover->store_data({ errors => $messages_string });
     $pdfToCover->store_data({ to_process => 0 });
 
     $self->finish($data);

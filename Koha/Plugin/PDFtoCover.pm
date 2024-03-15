@@ -88,22 +88,22 @@ sub tool {
         $self->{greeter}->enqueue( { size => $pdf } );
         my $id_job = $self->{greeter}->id;
 
-        $self->step_1(1, 0, 0, $id_job);
+        $self->step_1(1, 0, 0, $id_job, '');
 
         exit 0;
     } elsif ( $cgi->param('stop') ) {
         my $id_job = $cgi->param('id_job');
         Koha::BackgroundJobs->search({ id => $id_job })->next->cancel;
-        $self->step_1(0, 0, 1, '');
+        $self->step_1(0, 0, 1, '', $self->retrieve_data('errors'));
     } elsif ( $cgi->param('done') ) {
-        $self->step_1(0, 1, 0, '');
+        $self->step_1(0, 1, 0, '', $self->retrieve_data('errors'));
     } else {
-        $self->step_1(0, 0, 0, '');
+        $self->step_1(0, 0, 0, '', '');
     }
 }
 
 sub step_1 {
-    my ( $self, $wait, $done, $cancel, $id_job ) = @_;
+    my ( $self, $wait, $done, $cancel, $id_job, $errors ) = @_;
     my $cgi = $self->{'cgi'};
     my $pdf = $self->displayAffected();
 
@@ -113,6 +113,7 @@ sub step_1 {
     $template->param( done => $done );
     $template->param( cancel => $cancel );
     $template->param( id_job => $id_job );
+    $template->param( errors => [split(',', $errors)] );
     print $cgi->header( -type => 'text/html', -charset => 'utf-8' );
     print $template->output();
 }
@@ -135,8 +136,7 @@ sub getKohaVersion {
 
 sub displayAffected {
     my ( $self, $args ) = @_;
-    my $table = "cover_images";
-    my $query = "SELECT count(*) as count FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from $table);";
+    my $query = "SELECT count(*) as count FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from cover_images);";
     my $stmt = $dbh->prepare($query);
     $stmt->execute();
 
@@ -181,6 +181,7 @@ sub genererUneVignette {
 
 sub genererVignetteParUris {
     my ( $self, $biblionumber, @uris) = @_;
+    my $not_pdf = 1;
     foreach my $url (@uris) {
         if ( $self->isPdfResource($url) ) {
             my @filestodelete = ();
@@ -189,6 +190,7 @@ sub genererVignetteParUris {
             $save .= $biblionumber;
             if ( is_success( getstore( $url, $save ) ) ) {
                 try {
+                    $not_pdf = 0;
                     push @filestodelete, $save;
                     `pdftocairo "$save" -png "$save" -singlefile 2>&1`;    # Conversion de pdf à png, seulement pour la première page
                     my $imageFile = $save . ".png";
@@ -219,7 +221,7 @@ sub genererVignetteParUris {
             last;
         }
     }
-    return 0;
+    return $not_pdf;
 }
 
 sub getUrisByBiblioNumber {

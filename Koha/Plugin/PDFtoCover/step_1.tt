@@ -40,8 +40,17 @@
         </form>
 
         <p id="progression">&nbsp;</p>
+
+        [% IF cancel == 1 || done == 1 %]
+            <div id="errors">
+                [% FOREACH error IN errors %]
+                    <p>[% error %]</p>
+                [% END %]
+            </div>
+        [% END %]
+
         [% IF done == 1 %]
-            <a id="go-back" href="./plugins-home.pl">Back to plugins</a>
+            <a id="go-back" href="./plugins-home.pl">Retour aux plugins</a>
         [% END %]
         <label class="filterDescription"><p>Note: The plugin downloads each file and check its header to determine if it's a PDF file or not. Only PDF files will generate thumbnails.</p></label>
     </div>
@@ -55,12 +64,15 @@
     margin-left: 20px;
 }
 
-#submit{
+#launch, #stop {
     font-size: 100%;
     font-weight: bold;
-    height:25px;
-    background: #AFBD22;
     margin:3px 0;
+    color: black;
+}
+
+#stop{
+    background: #F54733;
 }
 
 #progression {
