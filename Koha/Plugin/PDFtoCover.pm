@@ -350,6 +350,12 @@ sub retrieve_template {
     return $template;
 }
 
+sub background_tasks {
+    return {
+        greeter => 'Koha::Plugin::PDFtoCover::PDFtoCoverGreeter'
+    };
+}
+
 #Supprimer le plugin avec toutes ses données
 sub uninstall() {
     my ( $self, $args ) = @_;
