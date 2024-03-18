@@ -20,19 +20,37 @@
         <label class="filterDescription"><p>Number of records to process: <span id="to_process">[% pdf %]</span></p></label>
         <hr>
 
-        <form onsubmit="launchGenerate()" method="get" id="formTraitement">
+        <form onbsubmit="launchGenerate()" method="post" id="formTraitement">
             <!-- Necessary for the plugin to run, do not remove  -->
             <input type="hidden" name="class" value="[% CLASS %]"/>
             <input type="hidden" name="method" value="[% METHOD %]"/>
             <!-- end of plugin necessary inputs  -->
-            <input type="hidden" id="op" name="op" value="valide"/>
 
-            <button id="launch" type="submit" class="btn btn-default">Create thumbnails</button>
+            <input name="greet" id="launch" type="submit" class="btn btn-default" value="Create thumbnails"/>
+        </form>
+
+        <form method="post" id="formStop">
+            <!-- Necessary for the plugin to run, do not remove  -->
+            <input type="hidden" name="class" value="[% CLASS %]"/>
+            <input type="hidden" name="method" value="[% METHOD %]"/>
+            <!-- end of plugin necessary inputs  -->
+            <input type="hidden" name="id_job" value="[% id_job %]"/>
+
+            <input name="stop" id="stop" type="submit" class="btn btn-default" value="Stop process" disabled/>
         </form>
 
         <p id="progression">&nbsp;</p>
+
+        [% IF cancel == 1 || done == 1 %]
+            <div id="errors">
+                [% FOREACH error IN errors %]
+                    <p>[% error %]</p>
+                [% END %]
+            </div>
+        [% END %]
+
         [% IF done == 1 %]
-            <a id="go-back" href="./plugins-home.pl">Back to plugins</a>
+            <a id="go-back" href="./plugins-home.pl">Retour aux plugins</a>
         [% END %]
         <label class="filterDescription"><p>Note: The plugin downloads each file and check its header to determine if it's a PDF file or not. Only PDF files will generate thumbnails.</p></label>
     </div>
@@ -46,12 +64,15 @@
     margin-left: 20px;
 }
 
-#submit{
+#launch, #stop {
     font-size: 100%;
     font-weight: bold;
-    height:25px;
-    background: #AFBD22;
     margin:3px 0;
+    color: black;
+}
+
+#stop{
+    background: #F54733;
 }
 
 #progression {
@@ -76,13 +97,22 @@ $( function() {
         info = document.getElementById('progression')
         info.setAttribute('class','finish');
         info.firstChild.data = "Job is running in the background - please wait.";
+        document.getElementById('stop').disabled = false;
         updateProcessed();
+    [% END %]
+    [% IF cancel == 1 %]
+        info = document.getElementById('progression');
+        info.setAttribute('class','finish');
+        info.firstChild.data = "Job stopped!";
+        document.getElementById('go-back').style.display = "inline-block";
+        document.getElementById('stop').disabled = true;
     [% END %]
     [% IF done == 1 %]
         info = document.getElementById('progression');
         info.setAttribute('class','finish');
         info.firstChild.data = "Job done!";
         document.getElementById('go-back').style.display = "inline-block";
+        document.getElementById('stop').disabled = true;
     [% END %]
 } );
 
