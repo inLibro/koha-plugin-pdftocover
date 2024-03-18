@@ -49,14 +49,14 @@ BEGIN {
 }
 
 our $dbh      = C4::Context->dbh();
-our $VERSION  = 1.9;
+our $VERSION  = 2.0;
 our $metadata = {
     name            => 'PDFtoCover',
     author          => 'Mehdi Hamidi, Bouzid Fergani, Arthur Bousquet, The Minh Luong',
     description     => 'Creates cover images for documents missing one',
     date_authored   => '2016-06-08',
-    date_updated    => '2023-06-15',
-    minimum_version => '17.05',
+    date_updated    => '2024-03-18',
+    minimum_version => '23.05',
     version         => $VERSION,
     namespace       => 'pdftocover',
 };
@@ -88,6 +88,7 @@ sub tool {
         $self->{greeter}->enqueue( { size => $pdf, one_image => 0 } );
         my $id_job = $self->{greeter}->id;
 
+        $self->store_data({ errors => '' });
         $self->step_1(1, 0, 0, $id_job, '');
 
         exit 0;
