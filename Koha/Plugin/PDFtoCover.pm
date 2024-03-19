@@ -49,14 +49,14 @@ BEGIN {
 }
 
 our $dbh      = C4::Context->dbh();
-our $VERSION  = 2.0;
+our $VERSION  = 2.1;
 our $metadata = {
     name            => 'PDFtoCover',
-    author          => 'Mehdi Hamidi, Bouzid Fergani, Arthur Bousquet, The Minh Luong',
+    author          => 'Mehdi Hamidi, Bouzid Fergani, Arthur Bousquet, The Minh Luong, Matthias Le Gac',
     description     => 'Creates cover images for documents missing one',
     date_authored   => '2016-06-08',
-    date_updated    => '2024-03-18',
-    minimum_version => '23.05',
+    date_updated    => '2024-03-19',
+    minimum_version => '23.05.08',
     version         => $VERSION,
     namespace       => 'pdftocover',
 };
@@ -354,6 +354,24 @@ sub background_tasks {
     return {
         greeter => 'Koha::Plugin::PDFtoCover::PDFtoCoverGreeter'
     };
+}
+
+sub template_include_paths {
+    my ($self, $args) = @_;
+
+    if ( $args->{lang} eq 'fr' ) {
+        return [
+            $self->mbf_path('inc/fr'),
+        ]
+    } elsif ( $args->{lang} eq 'fr-CA' ) {
+        return [
+            $self->mbf_path('inc/fr-CA'),
+        ]
+    } else {
+        return [
+            $self->mbf_path('inc/en'),
+        ]
+    }
 }
 
 #Supprimer le plugin avec toutes ses données
