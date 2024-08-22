@@ -49,7 +49,7 @@ BEGIN {
 }
 
 our $dbh      = C4::Context->dbh();
-our $VERSION  = 2.1;
+our $VERSION  = 2.2;
 our $metadata = {
     name            => 'PDFtoCover',
     author          => 'Mehdi Hamidi, Bouzid Fergani, Arthur Bousquet, The Minh Luong, Matthias Le Gac',
@@ -137,7 +137,7 @@ sub getKohaVersion {
 
 sub displayAffected {
     my ( $self, $args ) = @_;
-    my $query = "SELECT count(*) as count FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from cover_images);";
+    my $query = "SELECT count(*) as count FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from cover_images where biblionumber is not NULL);";
     my $stmt = $dbh->prepare($query);
     $stmt->execute();
 
@@ -152,7 +152,7 @@ sub genererVignette {
     my ( $self, $args ) = @_;
     my $ua = LWP::UserAgent->new( timeout => "5" );
     my $table = "cover_images";
-    my $query = "SELECT a.biblionumber, EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from $table);";
+    my $query = "SELECT a.biblionumber, EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") AS url FROM biblio_metadata AS a WHERE EXTRACTVALUE(a.metadata,\"record/datafield[\@tag='856']/subfield[\@code='u']\") <> '' and a.biblionumber not in (select biblionumber from $table where biblionumber is not NULL);";
 
     # Retourne 856$u, qui est le(s) URI(s) d'une ressource numérique
     my $sthSelectPdfUri = $dbh->prepare($query);
