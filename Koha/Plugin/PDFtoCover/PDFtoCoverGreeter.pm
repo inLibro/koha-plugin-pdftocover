@@ -88,7 +88,7 @@ sub process {
                     warn "$error\n";
                     push @messages, {
                         type => 'error',
-                        code => 'image_generation_failed_for_bilio_' . $biblionumber,
+                        code => 'image_generation_failed_for_biblio_' . $biblionumber,
                         error => $error,
                     };
                 } else {
@@ -99,7 +99,7 @@ sub process {
             } catch {
                 push @messages, {
                     type => 'error',
-                    code => 'image_generation_failed_for_bilio_' . $biblionumber,
+                    code => 'image_generation_failed_for_biblio_' . $biblionumber,
                     error => $_,
                 };
             };
