@@ -49,7 +49,7 @@ BEGIN {
 }
 
 our $dbh      = C4::Context->dbh();
-our $VERSION  = 2.2;
+our $VERSION  = 2.3;
 our $metadata = {
     name            => 'PDFtoCover',
     author          => 'Mehdi Hamidi, Bouzid Fergani, Arthur Bousquet, The Minh Luong, Matthias Le Gac',
@@ -236,7 +236,8 @@ sub getUrisByBiblioNumber {
     $stmt->execute($biblionumber);
     my $urifield = $stmt->fetchrow_array();
 
-    my @uris = split / /, $urifield;
+    my @uris;
+    @uris = split / /, $urifield if ($urifield);
     return @uris;
 }
 
@@ -285,7 +286,7 @@ sub intranet_catalog_biblio_enhancements_toolbar_button { # hook koha
 
     # On affiche un bouton que s'il y a une ressource pdf 
     if ($self->hasPdfResource($biblionumber)) { 
-        my $lang = $cgi->cookie('KohaOpacLanguage');
+        my $lang = C4::Languages::getlanguage($self->{'cgi'});
         my $hasLocalImage = $self->hasAlreadyLocalImage($biblionumber);
         my $stmt = $dbh->prepare("select value from systempreferences where variable='LocalCoverImages'");
         $stmt->execute();
