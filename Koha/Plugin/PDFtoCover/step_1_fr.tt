@@ -21,15 +21,18 @@
         <hr>
 
         <form onbsubmit="launchGenerate()" method="post" id="formTraitement">
+            [% INCLUDE 'csrf-token.inc' %]
             <!-- Necessary for the plugin to run, do not remove  -->
             <input type="hidden" name="class" value="[% CLASS %]"/>
             <input type="hidden" name="method" value="[% METHOD %]"/>
             <!-- end of plugin necessary inputs  -->
 
             <input name="greet" id="launch" type="submit" class="btn btn-default" value="Générer les vignettes"/>
+            <input type="hidden" name="csrf-token" id="csrf-token-input" value=""/>
         </form>
 
         <form method="post" id="formStop">
+            [% INCLUDE 'csrf-token.inc' %]
             <!-- Necessary for the plugin to run, do not remove  -->
             <input type="hidden" name="class" value="[% CLASS %]"/>
             <input type="hidden" name="method" value="[% METHOD %]"/>
@@ -37,6 +40,7 @@
             <input type="hidden" name="id_job" value="[% id_job %]"/>
 
             <input name="stop" id="stop" type="submit" class="btn btn-default" value="Arrêt du processus" disabled/>
+            <input type="hidden" name="csrf-token" id="csrf-token-input" value=""/>
         </form>
 
         <p id="progression">&nbsp;</p>
@@ -91,6 +95,10 @@
 </style>
 
 <script>
+
+var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+document.getElementById('csrf-token-input').value = csrfToken;
+
 $( function() {
     [% IF wait == 1 %]
         document.getElementById('launch').disabled = true;
